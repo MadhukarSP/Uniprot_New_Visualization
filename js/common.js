@@ -1,5 +1,3 @@
-var num_0f_iterations = 6;
-
 var tooltip;
 
 //Circle position
@@ -38,10 +36,12 @@ var yScaleMax = 350;
 
 var widthBtnBars = 60;
 
+var firstPatternColor = "#FFFFFF";
+var secondPatternColor = "#CCFF00";
+var thirdPatternColor = "#00FF00";
+
 var canvas;
-
 var index = 0;
-
 
 $(document).ready(function() {
 
@@ -49,7 +49,7 @@ $(document).ready(function() {
     initializeValues();
 });
 
-//Retrieve JSON value and draw bars
+//Retrieve JSON value and call respective method to display Overview and Alignment information
 function initializeValues() {
     $.getJSON("json/test.json", function(data) {
 
@@ -64,7 +64,6 @@ function initializeValues() {
             var num_of_regions = data.iterations[0].hits[i].hsps.length;
             var blast_output = [];
 
-            var num_of_regions= data.iterations[0].hits[i].hsps.length;
             blast_output.push({
                 "score": data.iterations[0].hits[i].hsps[0]["score"],
                 "evalue" : data.iterations[0].hits[i].hsps[0]["evalue"],
@@ -105,6 +104,305 @@ function initializeValues() {
         //Draw overview bars [Query, Subject and Gaps]
         drawOverviewBars(all_blast_output, numberOfHits);
     });
+}
+
+//Draw Overview bars for query and subject
+function drawOverviewBars(blast_data, numberOfHits) {
+
+    var enzymeDetails = [];
+    var alignmentLength = [];
+    var queryFromValues = [];
+    var queryToValues = [];
+    var hitFromValues = [];
+    var hitToValues = [];
+    var queryLength = blast_data[0].query_len;
+    var numOfRegionsLeft = [];
+    var gaps = [];
+    var qseq = [];
+    var hseq = [];
+
+
+    for(var i=0; i < blast_data.length; i++) {
+        if(blast_data[i].num_of_regions_left != 0) {
+            var identityValue = getIdentityInfo(blast_data, i, blast_data[i].num_of_regions_left);
+            enzymeDetails.push("Organism:" + blast_data[i].organism + ", Identity:"+ identityValue
+            + ",eValue:"+ blast_data[i].evalue + ", score:"+ blast_data[i].score);
+        }
+        alignmentLength.push(blast_data[i].align_len);
+        queryFromValues.push(blast_data[i].query_from);
+        queryToValues.push(blast_data[i].query_to);
+        hitFromValues.push(blast_data[i].hit_from);
+        hitToValues.push(blast_data[i].hit_to);
+        numOfRegionsLeft.push(blast_data[i].num_of_regions_left);
+        gaps.push(blast_data[i].gaps);
+        qseq.push(blast_data[i].qseq);
+        hseq.push(blast_data[i].hseq);
+    }
+
+    overviewHeight = 60 + ((numberOfHits-1) * 60);
+
+    if(overviewHeight < 300) {
+        overviewHeight = 300;
+    }
+
+    //Add svg elements to the div and specify the attributes to it
+    canvas = d3.select('#wrapper')
+        .append('svg')
+        .attr({'width':overviewWidth,'height':overviewHeight});
+
+    // X-axis, Y-axis and Color scale information
+    var xScale = d3.scale.linear()
+        .domain([0,queryLength])
+        .range([xScaleMin,xScaleMax]);
+
+    var yScale = d3.scale.linear()
+        .domain([0,numberOfHits])
+        .range([yScaleMin,yScaleMax]);
+
+    var colors = ['#0000b4','#0082ca','#0094ff','#0d4bcf','#0066AE','#074285','#00187B','#285964','#405F83','#416545','#4D7069','#6E9985','#7EBC89','#0283AF','#79BCBF','#99C19E'];
+
+    var colorScale = d3.scale.linear()
+        .domain([0,queryLength])
+        .range(["#0000FF", "#FF0000"]);
+
+    ////Add the patterns to the canvas
+    //addPattern();
+
+    //Add axes to the graph
+    addAxes(xScale, yScale, enzymeDetails);
+
+    //Add the Query bars to the graph
+    addQueryBar(xScale, alignmentLength, queryFromValues, queryToValues, colorScale, numOfRegionsLeft, gaps, qseq);
+
+    //Add the Hit bars to the graph
+    addHitBar(xScale, alignmentLength, hitFromValues, hitToValues, colorScale, numOfRegionsLeft, gaps, hseq);
+}
+
+
+
+//Add the Query bars to the graph
+function addQueryBar(xScale, alignmentLength, queryFromValues, queryToValues, colorScale, numOfRegionsLeft, gaps, qseq) {
+
+    var queryBars = canvas.append('g')
+        .attr("transform", "translate(150,10)")
+        .attr('id','querybars');
+
+    var queryTexts = canvas.append('g')
+        .attr("transform", "translate(150,10)")
+        .attr('id','queryTexts');
+
+    for(var i= 0, k=0; i<queryFromValues.length;k++) {
+
+        queryBars.append('rect')
+            .attr('height',15)
+            .attr({'x':xScale(queryFromValues[i]),'y':(10 + (k*widthBtnBars))})
+            .style('fill',colorScale(queryToValues[i] - queryFromValues[i] + 1))
+            .attr('width',xScale(queryToValues[i] - queryFromValues[i]))
+            .attr('id', "queryRect"+i)
+            .attr('class', "bars");
+
+        queryTexts.append('text')
+            .attr({'x':xScale(parseInt(queryFromValues[i])+5),'y':(22 + (k*widthBtnBars))})
+            .text(queryFromValues[i])
+            .style({'fill':'#fff','font-size':'12px'})
+            .attr("id","queryFromText"+i);
+
+        queryTexts.append('text')
+            .attr({'x':xScale(parseInt(queryToValues[i])-35),'y':(22 + (k*widthBtnBars))})
+            .text(queryToValues[i])
+            .style({'fill':'#fff','font-size':'12px'})
+            .attr("id","queryToText"+i);
+
+        queryBars.select("#queryRect"+i).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i] + " - " + queryToValues[i] + "]");
+        queryTexts.select("#queryFromText"+i).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i] + " - " + queryToValues[i] + "]");
+        queryTexts.select("#queryToText"+i).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i] + " - " + queryToValues[i] + "]");
+
+        //Add gaps only if there is consecutive 3 gaps
+        addQueryGaps(gaps, i, qseq, queryBars, xScale, k);
+
+        for(var j=1; j<numOfRegionsLeft[i]; j++) {
+            queryBars.append('rect')
+                .attr('height',15)
+                .attr({'x':xScale(queryFromValues[i+j]),'y':(10 + (k*widthBtnBars))})
+                .style('fill',colorScale(queryToValues[i+j] - queryFromValues[i+j] + 1))
+                .attr('width',xScale(queryToValues[i+j] - queryFromValues[i+j]));
+
+            queryBars.append('rect')
+                .attr('height',15)
+                .attr({'x':xScale(queryFromValues[i+j]),'y':(10 + (k*widthBtnBars))})
+                .attr('width',xScale(queryToValues[i+j] - queryFromValues[i+j]))
+                .attr('fill', 'url(#pattern' + j +')')
+                .attr("id","queryRect"+(i+j));
+
+            queryTexts.append('text')
+                .attr({'x':xScale(parseInt(queryFromValues[i+j])+5),'y':(22 + (k*widthBtnBars))})
+                .text(queryFromValues[i+j])
+                .style({'fill':'#fff','font-size':'12px'})
+                .attr("id","queryFromText"+(i+j));
+
+            queryTexts.append('text')
+                .attr({'x':xScale(parseInt(queryToValues[i+j])-25),'y':(22 + (k*widthBtnBars))})
+                .text(queryToValues[i+j])
+                .style({'fill':'#fff','font-size':'12px'})
+                .attr("id","queryToText"+(i+j));
+
+            queryBars.select("#queryRect"+(i+j)).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i+j] + " - " + queryToValues[i+j] + "]");
+            queryTexts.select("#queryFromText"+(i+j)).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i+j] + " - " + queryToValues[i+j] + "]");
+            queryTexts.select("#queryToText"+(i+j)).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i+j] + " - " + queryToValues[i+j] + "]");
+
+            //Add gaps only if there is consecutive 3 gaps
+            addQueryGaps(gaps, (i+j) , qseq, queryBars, xScale, k);
+        }
+
+        if(numOfRegionsLeft[i] > 1) {
+            i = i+numOfRegionsLeft[i];
+        } else {
+            i++;
+        }
+    }
+}
+
+//Add gaps only if there is consecutive 3 gaps
+function addQueryGaps(gaps, i, sequ, bars, xScale, k) {
+    if(gaps[i] > 2) {
+        var allGapsInQuery = getAllIndexes(sequ[i], "-");
+
+        for(var l= 0; l<allGapsInQuery.length;) {
+            var x=0;
+            var initialValue = allGapsInQuery[l];
+            while((allGapsInQuery[l]+1) == allGapsInQuery[l+1]) {
+                x++;
+                l++;
+            }
+
+            if(x>1) {
+
+                bars.append('rect')
+                    .attr('height',15)
+                    .style("z-index", "20")
+                    .attr({'x':xScale(initialValue),'y':(10 + (k*widthBtnBars))})
+                    .style('fill',gapColor)
+                    .attr('width',xScale(parseInt(initialValue+x) - initialValue))
+                    .attr("id","queryRectGap"+(i+l));
+
+                bars.select("#queryRectGap"+(i+l)).style("cursor","pointer").attr("title","Query Gap ["+ initialValue + " - " + parseInt(initialValue+x) + "]");
+            }
+            l++;
+        }
+    }
+}
+
+
+
+//Add the hit bars to the graph
+function addHitBar(xScale, alignmentLength, hitFromValues, hitToValues, colorScale, numOfRegionsLeft, gaps, hseq) {
+    var hitBars = canvas.append('g')
+        .attr("transform", "translate(150,10)")
+        .attr('id','hitbars');
+
+    var hitTexts = canvas.append('g')
+        .attr("transform", "translate(150,10)")
+        .attr('id','hitTexts');
+
+    for(var i= 0, k=0; i<hitFromValues.length;k++) {
+        hitBars.append('rect')
+            .attr('height',15)
+            .attr({'x':xScale(hitFromValues[i]),'y':(27 + (k*widthBtnBars))})
+            .style('fill',colorScale(hitToValues[i] - hitFromValues[i]+1))
+            .attr('width',xScale(hitToValues[i] - hitFromValues[i]))
+            .attr("id","hitRect"+i);
+
+        hitTexts.append('text')
+            .attr({'x':xScale(parseInt(hitFromValues[i])+5),'y':(40 + (k*widthBtnBars))})
+            .text(hitFromValues[i])
+            .style({'fill':'#fff','font-size':'12px'})
+            .style("z-index", "10")
+            .attr("id","hitFromText"+i);
+
+        hitTexts.append('text')
+            .attr({'x':xScale(parseInt(hitToValues[i])-25),'y':(40 + (k*widthBtnBars))})
+            .text(hitToValues[i])
+            .style({'fill':'#fff','font-size':'12px'})
+            .style("z-index", "10")
+            .attr("id","hitToText"+i);
+
+        hitBars.select("#hitRect"+i).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i] + " - " + hitToValues[i] + "]");
+        hitTexts.select("#hitFromText"+i).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i] + " - " + hitToValues[i] + "]");
+        hitTexts.select("#hitToText"+i).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i] + " - " + hitToValues[i] + "]");
+
+        //Add gaps only if there is consecutive 3 gaps
+        addHitGaps(gaps, i, hseq, hitBars, xScale, k);
+
+        for(var j=1; j<numOfRegionsLeft[i]; j++) {
+            hitBars.append('rect')
+                .attr('height',15)
+                .attr({'x':xScale(hitFromValues[i+j]),'y':(27 + (k*widthBtnBars))})
+                .style('fill',colorScale(parseInt(hitToValues[i+j]) - parseInt(hitFromValues[i+j]) + 1))
+                .attr('width',xScale(parseInt(hitToValues[i+j]) - parseInt(hitFromValues[i+j])));
+
+            hitBars.append('rect')
+                .attr('height',15)
+                .attr({'x':xScale(hitFromValues[i+j]),'y':(27 + (k*widthBtnBars))})
+                .attr('width',xScale(parseInt(hitToValues[i+j]) - parseInt(hitFromValues[i+j])))
+                .attr('fill', 'url(#pattern' + j +')')
+                .attr("id","hitRect"+(i+j));
+
+            hitTexts.append('text')
+                .attr({'x':xScale(parseInt(hitFromValues[i+j])+2),'y':(40 + (k*widthBtnBars))})
+                .text(hitFromValues[i+j])
+                .style({'fill':'#fff','font-size':'12px'})
+                .attr("id","hitFromText"+(i+j));
+
+            hitTexts.append('text')
+                .attr({'x':xScale(parseInt(hitToValues[i+j])-25),'y':(40 + (k*widthBtnBars))})
+                .text(hitToValues[i+j])
+                .style({'fill':'#fff','font-size':'12px'})
+                .attr("id","hitToText"+(i+j));
+
+            hitBars.select("#hitRect"+(i+j)).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i+j] + " - " + hitToValues[i+j] + "]");
+            hitTexts.select("#hitFromText"+(i+j)).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i+j] + " - " + hitToValues[i+j] + "]");
+            hitTexts.select("#hitToText"+(i+j)).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i+j] + " - " + hitToValues[i+j] + "]");
+
+            //Add gaps only if there is consecutive 3 gaps
+            addHitGaps(gaps, (i+j), hseq, hitBars, xScale, k);
+        }
+
+        if(numOfRegionsLeft[i] > 1) {
+            i = i+numOfRegionsLeft[i];
+        } else {
+            i++;
+        }
+    }
+}
+
+//Add gaps only if there is consecutive 3 gaps
+function addHitGaps(gaps, i, sequ, bars, xScale, k) {
+    if(gaps[i] > 2) {
+        var allGapsInQuery = getAllIndexes(sequ[i], "-");
+
+        for(var l= 0; l<allGapsInQuery.length;) {
+            var x=0;
+            var initialValue = allGapsInQuery[l];
+            while((allGapsInQuery[l]+1) == allGapsInQuery[l+1]) {
+                x++;
+                l++;
+            }
+
+            if(x>1) {
+
+                bars.append('rect')
+                    .attr('height',15)
+                    .style("z-index", "20")
+                    .attr({'x':xScale(initialValue),'y':(27 + (k*widthBtnBars))})
+                    .style('fill',gapColor)
+                    .attr('width',xScale(parseInt(initialValue+x) - initialValue))
+                    .attr("id","hitRectGap"+(i+l));
+
+                bars.select("#hitRectGap"+(i+l)).style("cursor","pointer").attr("title","Subject Gap ["+ initialValue + " - " + parseInt(initialValue+x) + "]");
+            }
+            l++;
+        }
+    }
 }
 
 //Draw alignment arcs for each region [Query, Subject and Gaps]
@@ -290,350 +588,44 @@ function addHitArc(canvas, arc, data, scale, regionNum, color) {
     }
 }
 
-//Draw Overview bars for query and subject
-function drawOverviewBars(blast_data, numberOfHits) {
-
-    var enzymeDetails = [];
-    var alignmentLength = [];
-    var queryFromValues = [];
-    var queryToValues = [];
-    var hitFromValues = [];
-    var hitToValues = [];
-    var queryLength = blast_data[0].query_len;
-    var numOfRegionsLeft = [];
-    var gaps = [];
-    var qseq = [];
-    var hseq = [];
-
-
-    for(var i=0; i < blast_data.length; i++) {
-        if(blast_data[i].num_of_regions_left != 0) {
-            var identityValue = getIdentityInfo(blast_data, i, blast_data[i].num_of_regions_left);
-            enzymeDetails.push("Organism:" + blast_data[i].organism + ", Identity:"+ identityValue
-                + ",eValue:"+ blast_data[i].evalue + ", score:"+ blast_data[i].score);
-        }
-        alignmentLength.push(blast_data[i].align_len);
-        queryFromValues.push(blast_data[i].query_from);
-        queryToValues.push(blast_data[i].query_to);
-        hitFromValues.push(blast_data[i].hit_from);
-        hitToValues.push(blast_data[i].hit_to);
-        numOfRegionsLeft.push(blast_data[i].num_of_regions_left);
-        gaps.push(blast_data[i].gaps);
-        qseq.push(blast_data[i].qseq);
-        hseq.push(blast_data[i].hseq);
-    }
-
-    overviewHeight = 60 + ((numberOfHits-1) * 60);
-
-    if(overviewHeight < 300) {
-        overviewHeight = 300;
-    }
-
-    //Add svg elements to the div and specify the attributes to it
-    canvas = d3.select('#wrapper')
-        .append('svg')
-        .attr({'width':overviewWidth,'height':overviewHeight});
-
-    // X-axis, Y-axis and Color scale information
-    var xScale = d3.scale.linear()
-        .domain([0,queryLength])
-        .range([xScaleMin,xScaleMax]);
-
-    var yScale = d3.scale.linear()
-        .domain([0,numberOfHits])
-        .range([yScaleMin,yScaleMax]);
-
-    var colors = ['#0000b4','#0082ca','#0094ff','#0d4bcf','#0066AE','#074285','#00187B','#285964','#405F83','#416545','#4D7069','#6E9985','#7EBC89','#0283AF','#79BCBF','#99C19E'];
-
-    var colorScale = d3.scale.linear()
-        .domain([0,queryLength])
-        .range(["#0000FF", "#FF0000"]);
-
-    ////Add the patterns to the canvas
-    //addPattern();
-
-    //Add axes to the graph
-    addAxes(xScale, yScale, enzymeDetails);
-
-    //Add the Query bars to the graph
-    addQueryBar(xScale, alignmentLength, queryFromValues, queryToValues, colorScale, numOfRegionsLeft, gaps, qseq);
-
-    //Add the Hit bars to the graph
-    addHitBar(xScale, alignmentLength, hitFromValues, hitToValues, colorScale, numOfRegionsLeft, gaps, hseq);
-}
-
+//Add different patterns used for displaying different regions in the Overview screen
 function addPattern() {
 
     canvas = d3.select('#patternDiv')
-        .append('svg')
+        .append('svg');
 
     canvas.append('defs')
         .append('pattern')
         .attr('id', 'pattern1')
         .attr('patternUnits', 'userSpaceOnUse')
         .attr('width', 1)
-        .attr('height', 4)
+        .attr('height', 5)
         .append('path')
         .attr('d', 'M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2')
-        .attr('stroke', '#000000')
+        .attr('stroke', firstPatternColor)
         .attr('stroke-width', 1);
 
     canvas.append('defs')
         .append('pattern')
         .attr('id', 'pattern2')
         .attr('patternUnits', 'userSpaceOnUse')
-        .attr('width', 4)
+        .attr('width', 5)
         .attr('height', 1)
         .append('path')
         .attr('d', 'M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2')
-        .attr('stroke', '#000000')
+        .attr('stroke', secondPatternColor)
         .attr('stroke-width', 1);
 
     canvas.append('defs')
         .append('pattern')
         .attr('id', 'pattern3')
         .attr('patternUnits', 'userSpaceOnUse')
-        .attr('width', 4)
-        .attr('height', 4)
+        .attr('width', 5)
+        .attr('height', 5)
         .append('path')
         .attr('d', 'M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2')
-        .attr('stroke', '#000000')
+        .attr('stroke', thirdPatternColor)
         .attr('stroke-width', 1);
-}
-
-//Add the Query bars to the graph
-function addQueryBar(xScale, alignmentLength, queryFromValues, queryToValues, colorScale, numOfRegionsLeft, gaps, qseq) {
-
-    var queryBars = canvas.append('g')
-        .attr("transform", "translate(150,10)")
-        .attr('id','querybars');
-
-    var queryTexts = canvas.append('g')
-        .attr("transform", "translate(150,10)")
-        .attr('id','queryTexts');
-
-    for(var i= 0, k=0; i<queryFromValues.length;k++) {
-
-        queryBars.append('rect')
-            .attr('height',15)
-            .attr({'x':xScale(queryFromValues[i]),'y':(10 + (k*widthBtnBars))})
-            .style('fill',colorScale(queryToValues[i] - queryFromValues[i] + 1))
-            .attr('width',xScale(queryToValues[i] - queryFromValues[i]))
-            .attr('id', "queryRect"+i)
-            .attr('class', "bars");
-
-        queryTexts.append('text')
-            .attr({'x':xScale(parseInt(queryFromValues[i])+5),'y':(22 + (k*widthBtnBars))})
-            .text(queryFromValues[i])
-            .style({'fill':'#fff','font-size':'12px'})
-            .attr("id","queryFromText"+i);
-
-        queryTexts.append('text')
-            .attr({'x':xScale(parseInt(queryToValues[i])-35),'y':(22 + (k*widthBtnBars))})
-            .text(queryToValues[i])
-            .style({'fill':'#fff','font-size':'12px'})
-            .attr("id","queryToText"+i);
-
-        queryBars.select("#queryRect"+i).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i] + " - " + queryToValues[i] + "]");
-        queryTexts.select("#queryFromText"+i).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i] + " - " + queryToValues[i] + "]");
-        queryTexts.select("#queryToText"+i).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i] + " - " + queryToValues[i] + "]");
-
-        //Add gaps only if there is consecutive 3 gaps
-        addQueryGaps(gaps, i, qseq, queryBars, xScale, k);
-
-        for(var j=1; j<numOfRegionsLeft[i]; j++) {
-            queryBars.append('rect')
-                .attr('height',15)
-                .attr({'x':xScale(queryFromValues[i+j]),'y':(10 + (k*widthBtnBars))})
-                .style('fill',colorScale(queryToValues[i+j] - queryFromValues[i+j] + 1))
-                .attr('width',xScale(queryToValues[i+j] - queryFromValues[i+j]));
-
-            queryBars.append('rect')
-                .attr('height',15)
-                .attr({'x':xScale(queryFromValues[i+j]),'y':(10 + (k*widthBtnBars))})
-                .attr('width',xScale(queryToValues[i+j] - queryFromValues[i+j]))
-                .attr('fill', 'url(#pattern' + j +')')
-                .attr("id","queryRect"+(i+j));
-
-            queryTexts.append('text')
-                .attr({'x':xScale(parseInt(queryFromValues[i+j])+5),'y':(22 + (k*widthBtnBars))})
-                .text(queryFromValues[i+j])
-                .style({'fill':'#fff','font-size':'12px'})
-                .attr("id","queryFromText"+(i+j));
-
-            queryTexts.append('text')
-                .attr({'x':xScale(parseInt(queryToValues[i+j])-25),'y':(22 + (k*widthBtnBars))})
-                .text(queryToValues[i+j])
-                .style({'fill':'#fff','font-size':'12px'})
-                .attr("id","queryToText"+(i+j));
-
-            queryBars.select("#queryRect"+(i+j)).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i+j] + " - " + queryToValues[i+j] + "]");
-            queryTexts.select("#queryFromText"+(i+j)).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i+j] + " - " + queryToValues[i+j] + "]");
-            queryTexts.select("#queryToText"+(i+j)).style("cursor","pointer").attr("title","Query ["+ queryFromValues[i+j] + " - " + queryToValues[i+j] + "]");
-
-            //Add gaps only if there is consecutive 3 gaps
-            addQueryGaps(gaps, (i+j) , qseq, queryBars, xScale, k);
-        }
-
-        if(numOfRegionsLeft[i] > 1) {
-            i = i+numOfRegionsLeft[i];
-        } else {
-            i++;
-        }
-    }
-}
-
-function mouseover() {
-    d3.select(this).select("circle").transition()
-        .duration(750)
-        .attr("r", 36);
-}
-
-function mouseout() {
-    d3.select(this).select("circle").transition()
-        .duration(750)
-        .attr("r", 8);
-}
-
-//Add gaps only if there is consecutive 3 gaps
-function addQueryGaps(gaps, i, sequ, bars, xScale, k) {
-    if(gaps[i] > 2) {
-        var allGapsInQuery = getAllIndexes(sequ[i], "-");
-
-        for(var l= 0; l<allGapsInQuery.length;) {
-            var x=0;
-            var initialValue = allGapsInQuery[l];
-            while((allGapsInQuery[l]+1) == allGapsInQuery[l+1]) {
-                x++;
-                l++;
-            }
-
-            if(x>1) {
-
-                bars.append('rect')
-                    .attr('height',15)
-                    .style("z-index", "20")
-                    .attr({'x':xScale(initialValue),'y':(10 + (k*widthBtnBars))})
-                    .style('fill',gapColor)
-                    .attr('width',xScale(parseInt(initialValue+x) - initialValue))
-                    .attr("id","queryRectGap"+(i+l));
-
-                bars.select("#queryRectGap"+(i+l)).style("cursor","pointer").attr("title","Query Gap ["+ initialValue + " - " + parseInt(initialValue+x) + "]");
-            }
-            l++;
-        }
-    }
-}
-
-//Add gaps only if there is consecutive 3 gaps
-function addHitGaps(gaps, i, sequ, bars, xScale, k) {
-    if(gaps[i] > 2) {
-        var allGapsInQuery = getAllIndexes(sequ[i], "-");
-
-        for(var l= 0; l<allGapsInQuery.length;) {
-            var x=0;
-            var initialValue = allGapsInQuery[l];
-            while((allGapsInQuery[l]+1) == allGapsInQuery[l+1]) {
-                x++;
-                l++;
-            }
-
-            if(x>1) {
-
-                bars.append('rect')
-                    .attr('height',15)
-                    .style("z-index", "20")
-                    .attr({'x':xScale(initialValue),'y':(27 + (k*widthBtnBars))})
-                    .style('fill',gapColor)
-                    .attr('width',xScale(parseInt(initialValue+x) - initialValue))
-                    .attr("id","hitRectGap"+(i+l));
-
-                bars.select("#hitRectGap"+(i+l)).style("cursor","pointer").attr("title","Subject Gap ["+ initialValue + " - " + parseInt(initialValue+x) + "]");
-            }
-            l++;
-        }
-    }
-}
-
-//Add the hit bars to the graph
-function addHitBar(xScale, alignmentLength, hitFromValues, hitToValues, colorScale, numOfRegionsLeft, gaps, hseq) {
-    var hitBars = canvas.append('g')
-        .attr("transform", "translate(150,10)")
-        .attr('id','hitbars');
-
-    var hitTexts = canvas.append('g')
-        .attr("transform", "translate(150,10)")
-        .attr('id','hitTexts');
-
-    for(var i= 0, k=0; i<hitFromValues.length;k++) {
-        hitBars.append('rect')
-            .attr('height',15)
-            .attr({'x':xScale(hitFromValues[i]),'y':(27 + (k*widthBtnBars))})
-            .style('fill',colorScale(hitToValues[i] - hitFromValues[i]+1))
-            .attr('width',xScale(hitToValues[i] - hitFromValues[i]))
-            .attr("id","hitRect"+i);
-
-        hitTexts.append('text')
-            .attr({'x':xScale(parseInt(hitFromValues[i])+5),'y':(40 + (k*widthBtnBars))})
-            .text(hitFromValues[i])
-            .style({'fill':'#fff','font-size':'12px'})
-            .style("z-index", "10")
-            .attr("id","hitFromText"+i);
-
-        hitTexts.append('text')
-            .attr({'x':xScale(parseInt(hitToValues[i])-25),'y':(40 + (k*widthBtnBars))})
-            .text(hitToValues[i])
-            .style({'fill':'#fff','font-size':'12px'})
-            .style("z-index", "10")
-            .attr("id","hitToText"+i);
-
-        hitBars.select("#hitRect"+i).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i] + " - " + hitToValues[i] + "]");
-        hitTexts.select("#hitFromText"+i).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i] + " - " + hitToValues[i] + "]");
-        hitTexts.select("#hitToText"+i).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i] + " - " + hitToValues[i] + "]");
-
-        //Add gaps only if there is consecutive 3 gaps
-        addHitGaps(gaps, i, hseq, hitBars, xScale, k);
-
-        for(var j=1; j<numOfRegionsLeft[i]; j++) {
-            hitBars.append('rect')
-                .attr('height',15)
-                .attr({'x':xScale(hitFromValues[i+j]),'y':(27 + (k*widthBtnBars))})
-                .style('fill',colorScale(parseInt(hitToValues[i+j]) - parseInt(hitFromValues[i+j]) + 1))
-                .attr('width',xScale(parseInt(hitToValues[i+j]) - parseInt(hitFromValues[i+j])));
-
-            hitBars.append('rect')
-                .attr('height',15)
-                .attr({'x':xScale(hitFromValues[i+j]),'y':(27 + (k*widthBtnBars))})
-                .attr('width',xScale(parseInt(hitToValues[i+j]) - parseInt(hitFromValues[i+j])))
-                .attr('fill', 'url(#pattern' + j +')')
-                .attr("id","hitRect"+(i+j));
-
-            hitTexts.append('text')
-                .attr({'x':xScale(parseInt(hitFromValues[i+j])+2),'y':(40 + (k*widthBtnBars))})
-                .text(hitFromValues[i+j])
-                .style({'fill':'#fff','font-size':'12px'})
-                .attr("id","hitFromText"+(i+j));
-
-            hitTexts.append('text')
-                .attr({'x':xScale(parseInt(hitToValues[i+j])-25),'y':(40 + (k*widthBtnBars))})
-                .text(hitToValues[i+j])
-                .style({'fill':'#fff','font-size':'12px'})
-                .attr("id","hitToText"+(i+j));
-
-            hitBars.select("#hitRect"+(i+j)).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i+j] + " - " + hitToValues[i+j] + "]");
-            hitTexts.select("#hitFromText"+(i+j)).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i+j] + " - " + hitToValues[i+j] + "]");
-            hitTexts.select("#hitToText"+(i+j)).style("cursor","pointer").attr("title","Subject ["+ hitFromValues[i+j] + " - " + hitToValues[i+j] + "]");
-
-            //Add gaps only if there is consecutive 3 gaps
-            addHitGaps(gaps, (i+j), hseq, hitBars, xScale, k);
-        }
-
-        if(numOfRegionsLeft[i] > 1) {
-            i = i+numOfRegionsLeft[i];
-        } else {
-            i++;
-        }
-    }
 }
 
 //Get percentage identity Information
@@ -678,92 +670,68 @@ function addAxes(xScale, yScale, enzymeDetails) {
         .attr('id','bottomxaxis')
         .call(xAxis);
 
-    //Add y-axis at left
-    var	yAxis = d3.svg.axis()
+    //Add y-axis at left organism
+    var	yAxisLeft = d3.svg.axis()
         .orient('left')
         .scale(yScale)
         .tickSize(1)
         .tickFormat(function(d,i){ return enzymeDetails[i].split(',')[0]; })
         .tickValues(d3.range(enzymeDetails.length));
 
-    var y_xis = canvas.append('g')
+    canvas.append('g')
         .attr("transform", "translate(150,10)")
         .attr('id','leftyaxis')
-        .call(yAxis)
+        .call(yAxisLeft)
         .selectAll('.tick')
         .attr("transform", function (d,i) {return "translate(" + 0 + "," + (30 + (i*widthBtnBars)) + ")"});
 
-    //Add y-axis at left
-    var	yAxis = d3.svg.axis()
+    //Add y-axis at right identity
+    var	yAxisRightIdentity = d3.svg.axis()
         .orient('right')
         .scale(yScale)
         .tickSize(1)
         .tickFormat(function(d,i){ return enzymeDetails[i].split(',')[1]; })
         .tickValues(d3.range(enzymeDetails.length));
 
-    var y_xis = canvas.append('g')
+    canvas.append('g')
         .attr("transform", "translate(752,10)")
         .attr('id','rightyaxis')
-        .call(yAxis)
+        .call(yAxisRightIdentity)
         .selectAll('.tick')
         .attr("transform", function (d,i) {return "translate(" + 0 + "," + (12 + (i*widthBtnBars)) + ")"});
 
-    //Add y-axis at left
-    var	yAxis = d3.svg.axis()
+    //Add y-axis at right eValue
+    var	yAxisRighteValue = d3.svg.axis()
         .orient('right')
         .scale(yScale)
         .tickSize(0)
         .tickFormat(function(d,i){ return enzymeDetails[i].split(',')[2]; })
         .tickValues(d3.range(enzymeDetails.length));
 
-    var y_xis = canvas.append('g')
+    canvas.append('g')
         .attr("transform", "translate(753,10)")
         .attr('id','rightyaxis')
-        .call(yAxis)
+        .call(yAxisRighteValue)
         .selectAll('.tick')
         .attr("transform", function (d,i) {return "translate(" + 0 + "," + (24 + (i*widthBtnBars)) + ")"});
 
-    //Add y-axis at left
-    var	yAxis = d3.svg.axis()
+    //Add y-axis at right Score
+    var	yAxisRightScore = d3.svg.axis()
         .orient('right')
         .scale(yScale)
         .tickSize(0)
         .tickFormat(function(d,i){ return enzymeDetails[i].split(',')[3]; })
         .tickValues(d3.range(enzymeDetails.length));
 
-    var y_xis = canvas.append('g')
+    canvas.append('g')
         .attr("transform", "translate(753,10)")
         .attr('id','rightyaxis')
-        .call(yAxis)
+        .call(yAxisRightScore)
         .selectAll('.tick')
         .attr("transform", function (d,i) {return "translate(" + 0 + "," + (36 + (i*widthBtnBars)) + ")"});
 }
 
-function wrap(text, width) {
-    text.each(function() {
-        var text = d3.select(this),
-            words = text.text().split(/\s+/).reverse(),
-            word,
-            line = [],
-            lineNumber = 0,
-            lineHeight = 1.1, // ems
-            y = text.attr("y"),
-            dy = parseFloat(text.attr("dy")),
-            tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
-        while (word = words.pop()) {
-            line.push(word);
-            tspan.text(line.join(" "));
-            if (tspan.node().getComputedTextLength() > width) {
-                line.pop();
-                tspan.text(line.join(" "));
-                line = [word];
-                tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
-            }
-        }
-    });
-}
-
-//Get all the occurrences of the val in the sequence
+//Get all the occurrences of the val ('-' hyphen sign) in the sequence
 function getAllIndexes(sequence, val) {
     var indexes = [], i = -1;
     while ((i = sequence.indexOf(val, i+1)) != -1){
@@ -809,7 +777,7 @@ function displayableEvalue(blast_data, index) {
     }
 }
 
-//Add html table to the div.
+//Add html table to the div. Inside this table alignment circles [Arcs] will be drawn
 function addTable(table_id, donut_id) {
     $(".diagrams").append('<table class="table-design col-md-3" id="' + table_id + '">'
     + '<tbody>'
@@ -864,7 +832,41 @@ function fnEndPoints(inner, outer, end) {
     return [ Math.cos(a) * r, Math.sin(a) * r ];
 }
 
+function mouseover() {
+    d3.select(this).select("circle").transition()
+        .duration(750)
+        .attr("r", 36);
+}
 
+function mouseout() {
+    d3.select(this).select("circle").transition()
+        .duration(750)
+        .attr("r", 8);
+}
+
+function wrap(text, width) {
+    text.each(function() {
+        var text = d3.select(this),
+            words = text.text().split(/\s+/).reverse(),
+            word,
+            line = [],
+            lineNumber = 0,
+            lineHeight = 1.1, // ems
+            y = text.attr("y"),
+            dy = parseFloat(text.attr("dy")),
+            tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
+        while (word = words.pop()) {
+            line.push(word);
+            tspan.text(line.join(" "));
+            if (tspan.node().getComputedTextLength() > width) {
+                line.pop();
+                tspan.text(line.join(" "));
+                line = [word];
+                tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+            }
+        }
+    });
+}
 
 //Important. Keep this for transition and animation
 //var transit = d3.select("svg").selectAll("#querybars rect")
